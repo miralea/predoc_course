@@ -1,0 +1,46 @@
+name: diamantopoulou-ctc-dynamics
+output_dir: ../docs
+navbar:
+  title: CIRCADIAN-CTC
+  left: ~
+  right:
+  - text: Home
+    icon: fa-home
+    href: index.html
+  - text: About
+    icon: fa-info
+    href: about.html
+  - text: Analyses
+    icon: fa-bar-chart
+    menu:
+      - text: "Data generation"
+      - text: "Run differential gene expression analysis, GSEA and GSVA"
+        href: 0_differential_expression_gsea_gsva.html
+      - text: "---------"
+      - text: "Main results"
+      - text: "CTC counts distribution in breast cancer patients"
+        href: patients_ctc_counts_distribution.html
+      - text: "PCA analysis of CTC gene expression in NSG-CDX-BR16 mice"
+        href: br16_pca.html
+      - text: "Differential gene expression report for NSG-CDX-BR16 data"
+        href: br16_dge.html
+      - text: "Report of GSEA and GSVA analysis in NSG-CDX-BR16, NSG-LM2, Patient and NSG-LM2 time kinetics"
+        href: gsea_across_models.html
+      - text: "Analysis of genes from candidate pathways"
+        href: core_gene_sets.html
+  - text: License
+    href: license.html
+  - icon: fa-github
+    href: https://github.com/TheAcetoLab/diamantopoulou-ctc-dynamics
+  - icon: fa-flask
+    href: https://www.theacetolab.com
+output:
+  workflowr::wflow_html:
+    keep_md: yes
+    toc: yes
+    toc_float: yes
+    toc_depth: 4
+    theme: journal
+    highlight: pygments
+    code_folding: hide
+    css: style.css
