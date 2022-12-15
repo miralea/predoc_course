@@ -43,6 +43,7 @@ library(ggpubr)
 library(clusterProfiler)
 library(dorothea)
 library(decoupleR)
+library(DESeq2)
 
 mutate <- dplyr::mutate
 select <- dplyr::select
@@ -71,12 +72,19 @@ use_sce_patients <-
   readRDS("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/data/sce/sce_patient.rds")
 ```
 
-Results from reproduced DGE analysis
+Results from reproduced DGE analysis (mostly wrong because povided code does not work)
 
 ```{r}
+# reproduced results = wrong
 dge_BR16 <- readRDS("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/output/br16/dge_edgeR_QLF_robust_try2.rds")
+
+# published results = correct
 dge_BR16_old <- readRDS("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/output/br16/dge_edgeR_QLF_robust_OLD.rds")
+
+# Jonas results = wrong
 dge_BR16_JR <- readRDS("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/output/br16/dge_edgeR_QLF_robust_jonas.rds")
+
+# other datasets reproduced = wrong
 dge_LM2 <- readRDS("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/output/lm2/dge_edgeR_QLF_robust.rds")
 dge_patient <- readRDS("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/output/patient/dge_edgeR_QLF_robust.rds")
 ```
@@ -100,6 +108,7 @@ metadata_patients <- colData(use_sce_patients) %>% data.frame()
 ### BR16
 
 ```{r}
+# extract top variable genes
 fit_res <- scran::modelGeneVar(use_sce_BR16, assay.type = "logcpm")
 fit_md <- metadata(fit_res)
 hvg_var_bio <- scran::getTopHVGs(fit_res, n = 500)
@@ -108,6 +117,7 @@ use_genes <- hvg_var_bio
 m <- t(counts_BR16[match(use_genes, rownames(counts_BR16)), ])
 ```
 
+Eigencorplot
 
 ```{r}
 p <- PCAtools::pca(t(m), metadata = colData(use_sce_BR16) %>% data.frame())
@@ -161,9 +171,13 @@ PCAtools::eigencorplot(
 )
 ```
 
+PCA plots
+
 ```{r}
 pca <- prcomp(m)
 plot((pca$sdev)^2 / sum(pca$sdev^2) * 100)
+
+# PC4 and PC5
 pca$x %>%
   as.data.frame() %>%
   rownames_to_column("sample_alias") %>%
@@ -187,9 +201,8 @@ pca$x %>%
   ggplot(aes(x = PC4, y = PC5, colour = cell_cycle_phase, shape = timepoint)) +
   geom_point(size = 3) +
   labs(title = "BR16", subtitle = "top500")
-```
 
-```{r}
+# PC1 and PC2
 pca$x %>%
   as.data.frame() %>%
   rownames_to_column("sample_alias") %>%
@@ -391,13 +404,16 @@ pca$x %>%
 
 # explore dge data
 
+## reproduced vs published
+
+BR16 mice
+
 ```{r}
 dge_BR16[["results"]] %>%
   ggplot(aes(x = logFC, y = -log10(FDR))) +
   geom_point() +
   xlim(c(-20, 20)) +
   labs(title = "Mira")
-
 
 dge_BR16_old[["results"]] %>%
   ggplot(aes(x = logFC, y = -log10(FDR))) +
@@ -411,30 +427,36 @@ dge_BR16_JR[["results"]] %>%
   labs(title = "Jonas")
 ```
 
+Other datasets 
+
 ```{r}
 dge_LM2[["results"]] %>%
   ggplot(aes(x = logFC, y = -log10(FDR))) +
   geom_point() +
-  xlim(c(-20, 20))
+  xlim(c(-20, 20)) +
+  labs(title = "LM2")
 
 dge_patient[["results"]] %>%
   ggplot(aes(x = logFC, y = -log10(FDR))) +
   geom_point() +
-  xlim(c(-20, 20))
+  xlim(c(-20, 20)) +
+  labs(title = "patients")
 ```
 
 
 ## DEseq
 
-## plain comp
+Because theier edgeR code did not work Tuemay helped us to do the dge in DEseq. However, some filtering steps are missung.
+
+### classic model
 
 ```{r}
-library(DESeq2)
-# DESeq2
+# input
 dds <- convertTo(use_sce_BR16, type="DESeq2", assay.type = "counts")
 dds@colData$timepoint <- as.factor(dds@colData$timepoint)
 dds@colData$cell_cycle_phase <- as.factor(dds@colData$cell_cycle_phase)
 
+# model
 design(dds)  <- as.formula(~ 0 + timepoint)
 dds <- DESeq(dds)
 resultsNames(dds)
@@ -446,6 +468,8 @@ resdds_classic <- results(dds,  contrast=c("timepoint", "resting","active")) %>%
 hist(resdds_classic$pvalue, breaks=100, main="RNA-Seq", xlab="p values")
 ```
 
+Volcano plot
+
 ```{r}
 resdds_classic %>%
   as.data.frame() %>% 
@@ -455,10 +479,17 @@ resdds_classic %>%
   labs(title ="DEseq")
 ```
 
+Convert identifiers
+
 ```{r}
 library(EnsDb.Hsapiens.v79)
-geneIDs1 <- ensembldb::select(EnsDb.Hsapiens.v79, keys= rownames(resdds), keytype = "GENEID", columns = c("SYMBOL","GENEID")) %>% 
+geneIDs1 <- ensembldb::select(EnsDb.Hsapiens.v79,
+                              keys= rownames(resdds),
+                              keytype = "GENEID", 
+                              columns = c("SYMBOL","GENEID")) %>% 
   as.data.frame()
+
+# detach package because it is overwriting some functions
 detach("package:EnsDb.Hsapiens.v79", unload = TRUE)
 detach("package:ensembldb", unload = TRUE)
 
@@ -466,6 +497,8 @@ resdds_classic <- resdds_classic %>%
   rownames_to_column("GENEID") %>% 
   left_join(geneIDs1)
 ```
+
+Comparison DEseq results to EdgeR results
 
 ```{r}
 model_comp_classic <- dge_BR16_old[["results"]] %>%
@@ -485,15 +518,16 @@ ggplot(model_comp_classic,
   labs(x = "EdgeR", y = "DEseq", title = "fold-change comparison")
 ```
 
-## cell cycle corrected
+### cell cycle corrected model
 
 ```{r}
-# DESeq2
+# input
 dds <- convertTo(use_sce_BR16, type="DESeq2", assay.type = "counts")
 dds@colData$timepoint <- as.factor(dds@colData$timepoint)
 dds@colData$cell_cycle_phase <- as.factor(dds@colData$cell_cycle_phase)
 dds@colData$group <- as.factor(paste0(dds@colData$cell_cycle_phase, "_",dds@colData$timepoint ))
 
+# model
 design(dds)  <- as.formula(~ 0 + timepoint + cell_cycle_phase )
 dds <- DESeq(dds)
 resultsNames(dds)
@@ -513,6 +547,8 @@ geneIDs1 <- ensembldb::select(EnsDb.Hsapiens.v79,
   columns = c("SYMBOL", "GENEID")
 ) %>%
   as.data.frame()
+
+# detach package because it is overwriting some functions
 detach("package:EnsDb.Hsapiens.v79", unload = TRUE)
 detach("package:ensembldb", unload = TRUE)
 
@@ -520,6 +556,8 @@ resdds_cc <- resdds_cc%>%
   rownames_to_column("GENEID")  %>% 
   left_join(geneIDs1)
 ```
+
+Compare classic versus corrected model
 
 ```{r}
 modelcomp_desdeq <- resdds_cc%>%
@@ -542,10 +580,11 @@ ggplot(modelcomp_desdeq,
 ## Interaction
 
 ```{r}
-# DESeq2
+# input
 dds <- convertTo(use_sce_BR16, type="DESeq2", assay.type = "counts")
 dds@colData$timepoint <- as.factor(dds@colData$timepoint)
 dds@colData$cell_cycle_phase <- as.factor(dds@colData$cell_cycle_phase)
+# create grouped effect
 dds@colData$group <- as.factor(paste0(dds@colData$cell_cycle_phase, "_",dds@colData$timepoint ))
 
 design(dds)  <- as.formula(~ 0 + group )
@@ -562,6 +601,7 @@ resdds_cc_S <- results(dds,  contrast=c("group", "S_active","S_resting")) %>%
 hist(resdds_cc$pvalue, breaks=100, main="RNA-Seq", xlab="p values")
 ```
 
+Volcano plot
 
 ```{r}
 bind_rows("M-phase" = resdds_cc_G2M,
@@ -578,7 +618,11 @@ bind_rows("M-phase" = resdds_cc_G2M,
 
 ## Markers
 
+Check some known markers to see if mesenchymal and epithelial phenotype is conserved.
+https://www.novusbio.com/antibody-news/antibodies/antibodies-for-epithelial-mesenchymal-transition-emt-marker
+
 ```{r}
+# just from the net, next time consider to ask chatGPT
 markers <- data.frame(
   SYMBOL = c("CDH1", "EPCAM", "LAMB1","MUC1", "SDC1",
              "FN1", "CDH2", "CD44", "S100A4"),
@@ -591,6 +635,7 @@ models_combined <- bind_rows("classic" = resdds_classic,
                              .id = "model") %>% 
   inner_join(markers)
 
+# check difference btw markers in different models
 ggplot(models_combined, 
        aes(x = model, y = log2FoldChange, colour = phenotype)) +
   geom_violin() +
@@ -606,8 +651,12 @@ ggplot(models_combined,
 
 
 # TF activity
+## database
 
 ```{r}
+# load database
+# attention: it is a human xenograft!! so I should use the human database
+
 dorothea_df <- dorothea_hs %>%
   dplyr::filter(confidence %in% c("A", "B", "C")) %>%
   dplyr::select(target, tf, mor) %>%
@@ -617,7 +666,12 @@ dorothea_df <- dorothea_hs %>%
 dorothea_df$likelihood <- 1
 ```
 
+## input
+
 ```{r}
+# prepare input
+# use only genes characteristic for either active or resting
+
 input_day <- dge_BR16_old[["results"]] %>%
   data.frame() %>%
   rownames_to_column("ENSEMBL") %>%
@@ -633,10 +687,11 @@ input_night <- dge_BR16_old[["results"]] %>%
   group_by(gene_name) %>%
   summarise(logFC = mean(logFC)) %>%
   # late timepoint
-  filter(logFC  < -0.5) %>%
+  filter(logFC <= -0.5) %>%
   column_to_rownames("gene_name")
 ```
 
+## run decupleR
 
 ```{r}
 TF_activities_day <- as.data.frame(
@@ -657,7 +712,10 @@ TF_activities_night <- as.data.frame(
 )
 ```
 
+Plot and compare results
+
 ```{r}
+# compare scores
 full_join(TF_activities_day, TF_activities_night,
   by = c("source", "condition", "statistic"),
   suffix = c("_day", "_night")
@@ -671,6 +729,7 @@ full_join(TF_activities_day, TF_activities_night,
   xlim(c(-4, 4)) +
   ylim(c(-4, 4))
 
+# top hits
 bind_rows("active" = TF_activities_day,
           "resting" = TF_activities_night,
           .id = "timepoint") %>% 
@@ -681,7 +740,7 @@ bind_rows("active" = TF_activities_day,
   facet_wrap(~timepoint, scales = "free", ncol = 1) +
   labs(y = "Transcription factor")
 
-
+# ratio plot
 inner_join(TF_activities_day, TF_activities_night,
   by = c("source", "condition", "statistic"),
   suffix = c("_active", "_resting")
@@ -694,16 +753,7 @@ inner_join(TF_activities_day, TF_activities_night,
   xlab("Transcription factor")
 ```
 
-```{r}
-t <- inner_join(TF_activities_day, TF_activities_night,
-  by = c("source", "condition", "statistic"),
-  suffix = c("_day", "_night")
-) %>%
-  mutate(ratio = score_day / score_night)
-```
-
-
-### MYC
+### example 1: MYC
 
 ```{r}
 t <- dorothea_df %>%
@@ -720,7 +770,7 @@ dge_BR16_old[["results"]] %>%
   geom_text_repel()
 ```
 
-### TEAD1
+### example 2: TEAD1
 
 ```{r}
 t <- dorothea_df %>%
@@ -739,11 +789,11 @@ dge_BR16_old[["results"]] %>%
 ```
 
 
-###ORA
+### ORA
 
-Very few genes!
+Old. Very few genes!
 
-```{r}
+```{r, eval = FALSE}
 
 ip_day <- TF_activities_day %>%
   filter(p_value < 0.05)
