@@ -21,6 +21,10 @@ knitr::opts_chunk$set(results='asis', echo=TRUE, message=FALSE, warning=FALSE, e
 options(stringsAsFactors = FALSE)
 ```
 
+```{r}
+setwd("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/")
+```
+
 
 Load packages
 ```{r load-libraries}
@@ -47,7 +51,7 @@ clean_msigdb_names <- function(x) x %>% gsub('REACTOME_', '', .) %>% gsub('WP_',
 ```
 
 Load MSigDB gene sets
-```{r load-msigdb}
+```{r load-msigdb, eval =FALSES}
 gmt_files_symbols <- list(
   msigdb.c2.cp = './data/resources/MSigDB/v7.4/c2.cp.v7.4.symbols.gmt',
   msigdb.c5.bp = './data/resources/MSigDB/v7.4/c5.go.bp.v7.4.symbols.gmt'
@@ -71,13 +75,26 @@ gmt_sets <- lapply(gmt_files_symbols, function(x) read.gmt(x) %>% collect %>% .[
 Configuration
 ```{r load_sce_br16}
 use_sce <- readRDS(file = file.path(params$sce_dir, 'sce_br16.rds'))
-output_dir <- './data/differential_expression/br16'
+```
+
+
+```{r load_sce_br16}
+output_dir <- './output/br16'
 if(!file.exists(output_dir))
   dir.create(output_dir, recursive = TRUE)
 ```
 
 Run DGE analysis
-```{r run_dge_br16, eval = FALSE}
+```{r run_dge_br16}
+source("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/code/R-functions/dge_wrappers.r")
+library(tidyverse)
+library(biomaRt)
+library(scran)
+```
+
+
+```{r run_dge_br16}
+library(scran)
 dge <- edgeR_dge(
   use_sce,
   # Desing configuration for differential expression
@@ -122,7 +139,7 @@ dge$results <- use_res %>%
 
 detach("package:biomaRt", unload=TRUE)
 
-saveRDS(dge, file = file.path(output_dir, 'dge_edgeR_QLF_robust.rds'))
+saveRDS(dge, file = file.path(output_dir, 'dge_edgeR_QLF_robust_try2.rds'))
 ```
 
 Run GSEA
@@ -148,7 +165,7 @@ saveRDS(res_gse, file = file.path(output_dir, 'gse_gsea.rds'))
 ```
 
 Clean data
-```{r clean_data_br16, eval = FALSE}
+```{r clean_data_br16}
 rm(use_sce)
 rm(dge)
 rm(res_gse)
@@ -157,14 +174,15 @@ rm(res_gse)
 ## NSG-CDX-BR16 : CTC-Cluster and CTC-WBC
 Configuration
 ```{r load_sce_br16_clusters_g}
+use_sce <- readRDS(file = file.path(params$sce_dir, 'sce_br16.rds'))
 use_sce <- use_sce[,use_sce$sample_type_g == 'ctc_cluster']
-output_dir <- './data/differential_expression/br16-ctc_cluster_and_wbc'
+output_dir <- './output/br16-ctc_cluster_and_wbc'
 if(!file.exists(output_dir))
   dir.create(output_dir, recursive = TRUE)
 ```
 
 Run DGE analysis
-```{r run_dge_br16_clusters_g, eval = FALSE}
+```{r run_dge_br16_clusters_g}
 dge <- edgeR_dge(
   use_sce,
   # Desing configuration for differential expression
@@ -209,7 +227,7 @@ dge$results <- use_res %>%
 
 detach("package:biomaRt", unload=TRUE)
 
-saveRDS(dge, file = file.path(output_dir, 'dge_edgeR_QLF_robust.rds'))
+saveRDS(dge, file = file.path(output_dir, 'dge_edgeR_QLF_robust_try2.rds'))
 ```
 
 Run GSEA
@@ -235,7 +253,7 @@ saveRDS(res_gse, file = file.path(output_dir, 'gse_gsea.rds'))
 ```
 
 Clean data
-```{r lean_data_br16_clusters_g, eval = FALSE}
+```{r lean_data_br16_clusters_g}
 rm(use_sce)
 rm(dge)
 rm(res_gse)
@@ -245,14 +263,15 @@ rm(res_gse)
 ## NSG-CDX-BR16 : CTC-Single
 Configuration
 ```{r load_sce_br16_single}
+use_sce <- readRDS(file = file.path(params$sce_dir, 'sce_br16.rds'))
 use_sce <- use_sce[,use_sce$sample_type_g == 'ctc_single']
-output_dir <- './data/differential_expression/br16-ctc_single'
+output_dir <- './output/br16-ctc_single'
 if(!file.exists(output_dir))
   dir.create(output_dir, recursive = TRUE)
 ```
 
 Run DGE analysis
-```{r run_dge_br16_single, eval = FALSE}
+```{r run_dge_br16_single}
 dge <- edgeR_dge(
   use_sce,
   # Desing configuration for differential expression
@@ -323,7 +342,7 @@ saveRDS(res_gse, file = file.path(output_dir, 'gse_gsea.rds'))
 ```
 
 Clean data
-```{r lean_data_br16_single, eval = FALSE}
+```{r lean_data_br16_single}
 rm(use_sce)
 rm(dge)
 rm(res_gse)
@@ -336,13 +355,13 @@ rm(res_gse)
 Configuration
 ```{r load_sce_lm2}
 use_sce <- readRDS(file = file.path(params$sce_dir, 'sce_lm2.rds'))
-output_dir <- './data/differential_expression/lm2'
+output_dir <- './output/lm2'
 if(!file.exists(output_dir))
   dir.create(output_dir, recursive = TRUE)
 ```
 
 Run DGE analysis
-```{r run_dge_lm2, eval = FALSE}
+```{r run_dge_lm2}
 dge <- edgeR_dge(
   use_sce,
   # Desing configuration for differential expression
@@ -391,7 +410,7 @@ saveRDS(dge, file = file.path(output_dir, 'dge_edgeR_QLF_robust.rds'))
 ```
 
 Clean data
-```{r clean_data_lm2, eval = FALSE}
+```{r clean_data_lm2}
 rm(use_sce)
 rm(dge)
 ```
@@ -401,13 +420,13 @@ rm(dge)
 Configuration
 ```{r load_sce_patient}
 use_sce <- readRDS(file = file.path(params$sce_dir, 'sce_patient.rds'))
-output_dir <- './data/differential_expression/patient'
+output_dir <- './output/patient'
 if(!file.exists(output_dir))
   dir.create(output_dir, recursive = TRUE)
 ```
 
 Run DGE analysis
-```{r run_dge_patient, eval = FALSE}
+```{r run_dge_patient}
 dge <- edgeR_dge(
   use_sce,
   # Desing configuration for differential expression
@@ -456,14 +475,14 @@ saveRDS(dge, file = file.path(output_dir, 'dge_edgeR_QLF_robust.rds'))
 ```
 
 Clean data
-```{r clean_data_patient, eval = FALSE}
+```{r clean_data_patient}
 rm(use_sce)
 rm(dge)
 ```
 
 ## LM2 time kinetics
 Configuration
-```{r load_sce_lm2_tk}
+```{r load_sce_lm2_tk, eval = F}
 use_sce <- readRDS(file = file.path(params$sce_dir, 'sce_lm2_tk.rds'))
 output_dir <- './data/differential_expression/lm2_tk'
 if(!file.exists(output_dir))
@@ -493,5 +512,8 @@ gsva_res <- gsva(assay(use_sce, 'logcpm'),
 saveRDS(gsva_res, file = file.path(output_dir, 'gsva_c2.cp.c5.bp.rds'))
 ```
 
+```{r}
+
+```
 
 
