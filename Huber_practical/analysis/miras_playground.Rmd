@@ -44,6 +44,7 @@ library(clusterProfiler)
 library(dorothea)
 library(decoupleR)
 library(DESeq2)
+library(scran)
 
 mutate <- dplyr::mutate
 select <- dplyr::select
@@ -484,7 +485,7 @@ Convert identifiers
 ```{r}
 library(EnsDb.Hsapiens.v79)
 geneIDs1 <- ensembldb::select(EnsDb.Hsapiens.v79,
-                              keys= rownames(resdds),
+                              keys= rownames(resdds_classic),
                               keytype = "GENEID", 
                               columns = c("SYMBOL","GENEID")) %>% 
   as.data.frame()
@@ -506,9 +507,7 @@ model_comp_classic <- dge_BR16_old[["results"]] %>%
   rownames_to_column("ENSEMBL") %>%
   group_by(gene_name) %>% 
   select(gene_name, logFC, FDR, description) %>% 
-  inner_join(resdds_classic %>%
-  rownames_to_column("GENEID") %>% 
-  left_join(geneIDs1), by = c("gene_name"= "SYMBOL"))
+  inner_join(resdds_classic , by = c("gene_name"= "SYMBOL"))
 
 ggplot(model_comp_classic,
        aes(x = logFC, y = log2FoldChange)) +
@@ -560,12 +559,8 @@ resdds_cc <- resdds_cc%>%
 Compare classic versus corrected model
 
 ```{r}
-modelcomp_desdeq <- resdds_cc%>%
-  rownames_to_column("GENEID")  %>% 
-  left_join(geneIDs1) %>% 
-  inner_join(resdds_classic %>%
-  rownames_to_column("GENEID") %>% 
-  left_join(geneIDs1), 
+modelcomp_desdeq <- resdds_cc %>% 
+  inner_join(resdds_classic , 
   by = "GENEID",
   suffix = c("_cc", "_classic"))
 
@@ -648,6 +643,127 @@ ggplot(models_combined,
   
 ```
 
+# Classifier
+
+Jonas code for rf classifier
+
+```{r, eval=F}
+# random forest
+library(randomForest)
+library(caret)
+
+# prepare data
+BR16_rf = dplyr::select(umap_count_BR16, -c("U1", "U2", "collection_date", "cell_type", "origin", "mouse_model", "ctc_n", "n_cells", "sample_title"))
+
+# make col to rownames
+BR16_rf = tibble::column_to_rownames(BR16_rf, var = "sample_id")
+# convert timepoint to factor
+BR16_rf$timepoint = as.factor(BR16_rf$timepoint)
+
+# select randomly 70% of rows
+BR16_train = BR16_rf[sample(nrow(BR16_rf), round(0.7*138)), ]
+subset = rownames(BR16_rf) %in% rownames(BR16_train)
+BR16_test = BR16_rf[subset == FALSE,]
+
+# how balanced is the train and test set?
+table(BR16_test$timepoint)
+table(BR16_train$timepoint)
+
+# train 
+time_point = BR16_train$timepoint
+timepoint_model = randomForest(x = dplyr::select(BR16_train, -"timepoint"), y = time_point)
+# predict
+predictions <- predict(timepoint_model, BR16_test)
+
+# results
+result = data.frame(timepoint = BR16_test$timepoint, prediction = predictions)
+table(result$timepoint == result$prediction)
+accuracy <- mean(result$timepoint == result$prediction)
+accuracy
+
+# important features for prediction
+#Conditional=True, adjusts for correlations between predictors.
+i_scores <- caret::varImp(timepoint_model, conditional=TRUE)
+i_scores_sorted = i_scores[order(-i_scores$Overall), , drop = FALSE]
+
+# GO terms
+library("org.Hs.eg.db")
+
+ER_GO_day <- enrichGO(
+  gene = i_scores_subset$ensembl_gene_id,
+  keyType = "ENSEMBL",
+  OrgDb = "org.Hs.eg.db",
+  pvalueCutoff = 1, ont = "ALL"
+) %>%
+  as.data.frame()
+
+# plot GO
+ggplot(ER_GO_day %>% arrange(qvalue) %>% slice_head(n=15),
+       aes(x = -log10(qvalue), y = reorder(Description, -log10(qvalue)), size = Count, colour = -log10(qvalue))) +
+  geom_point() +
+  #facet_wrap(~ONTOLOGY, scales = "free", ncol  =1) +
+  labs(y = "")
+```
+
+
+
+```{r}
+rf_importance <- read_csv("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/output/i_scores.csv") %>% 
+  setNames(c("GENEID", "Overall_importance"))
+```
+
+```{r}
+deseq_rf <- inner_join(rf_importance, resdds_classic)
+
+ggplot(deseq_rf,
+       aes(x = Overall_importance, y = log2FoldChange)) +
+  geom_point()
+```
+
+
+```{r}
+hits_classic <- resdds_classic %>% 
+  filter(padj < 0.05)
+
+hits_cc <- resdds_cc %>% 
+  filter(padj < 0.05)
+
+hits_rf <- rf_importance %>%
+  ungroup() %>% 
+  filter(Overall_importance > 0.05)
+
+method_comparison <- 
+  data.frame(
+    GENEID = unique(c(hits_cc$GENEID, hits_rf$GENEID, hits_classic$GENEID))) %>% 
+  mutate(
+    rf = ifelse(GENEID %in% hits_rf$GENEID, TRUE, FALSE),
+    cc = ifelse(GENEID %in% hits_cc$GENEID, TRUE, FALSE),
+    classic = ifelse(GENEID %in% hits_classic$GENEID, TRUE, FALSE)
+  )
+```
+
+```{r}
+method_comparison %>%  
+ggplot() +
+  ggvenn::geom_venn(aes(
+    A = `rf`,
+    B = `cc`,
+    C = `classic`
+  ),
+  fill_color = c("darkorange", "darkblue", "darkviolet"),
+  fill_alpha = 1,
+  stroke_alpha = 1,
+  stroke_color = "white",
+  set_name_size = 5,
+  set_names = c("random forest", "cc corrected", "classic"),
+  set_name_color = c("darkorange", "darkblue", "darkviolet"),
+  text_size = 4,
+  text_color = "white",
+  show_percentage = FALSE
+  ) +
+  coord_fixed() +
+  theme_void() 
+```
 
 
 # TF activity
