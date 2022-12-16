@@ -1,5 +1,5 @@
 ---
-title: "Miras playground - predoc Huber practical"
+title: "predoc Huber practical"
 output:
   html_document:
     keep_md: yes
@@ -9,6 +9,10 @@ output:
 editor_options: 
   chunk_output_type: inline
 ---
+
+Script summarising analyses of the Huber practical during the Predoc course 2022.
+
+If you have any question just write to me :) (mira.burtscher@embl.de or on slack).
 
 # General settings
 
@@ -31,21 +35,28 @@ knitr::opts_chunk$set(
 ## Packages
 
 ```{r, message=F, warning =F, include=F}
+# general
 library(tidyverse)
 library(ggplot2)
-theme_set(theme_bw())
+theme_set(theme_bw()) # set default plot theme
 library("reshape2")
 library(ggrepel)
-options(connectionObserver = NULL)
-library(org.Hs.eg.db)
 library(knitr)
 library(ggpubr)
+# DEG
+library(DESeq2)
+library(scran)
+# TF activities and enrichments
 library(clusterProfiler)
 library(dorothea)
 library(decoupleR)
-library(DESeq2)
-library(scran)
+options(connectionObserver = NULL)
+library(org.Hs.eg.db)
+# random forest
+library(randomForest)
+library(caret)
 
+# set some dplyr functions as default
 mutate <- dplyr::mutate
 select <- dplyr::select
 group_by <- dplyr::group_by
@@ -61,6 +72,9 @@ options(ggplot2.discrete.fill = c("purple4", "goldenrod", "darkgreen", "darkoran
 setwd("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/")
 ```
 # Load data
+All data can be downloaded here:
+https://zenodo.org/record/6358987#.Y5xFqlHMLEb
+Just unzip and adjust paths in the following junks.
 
 Count data as used as input for dge
 
@@ -445,7 +459,7 @@ dge_patient[["results"]] %>%
 ```
 
 
-## DEseq
+## DEseq2
 
 Because theier edgeR code did not work Tuemay helped us to do the dge in DEseq. However, some filtering steps are missung.
 
@@ -477,7 +491,7 @@ resdds_classic %>%
   mutate(hit = ifelse((padj < 0.05 & log2FoldChange > 0.5)|(padj < 0.05 & log2FoldChange < -0.5), "hit", "no hit")) %>% 
   ggplot(aes(x = log2FoldChange, y = -log10(padj), colour = hit)) +
   geom_point() +
-  labs(title ="DEseq")
+  labs(title ="DEseq2")
 ```
 
 Convert identifiers
@@ -499,7 +513,7 @@ resdds_classic <- resdds_classic %>%
   left_join(geneIDs1)
 ```
 
-Comparison DEseq results to EdgeR results
+Comparison DEseq2 results to EdgeR results
 
 ```{r}
 model_comp_classic <- dge_BR16_old[["results"]] %>%
@@ -633,13 +647,10 @@ models_combined <- bind_rows("classic" = resdds_classic,
 # check difference btw markers in different models
 ggplot(models_combined, 
        aes(x = model, y = log2FoldChange, colour = phenotype)) +
-  geom_violin() +
-  ggforce::geom_sina(size =2) +
+  geom_boxplot() +
+  ggforce::geom_sina(size =3) +
   #scale_color_manual(values = c("darkred", "darkgreen")) +
   labs(title = "Marker gene expression")
-  
-  geom_violin(width = 0.9) +
-  geom_point(position=position_jitterdodge(dodge.width=0.9))
   
 ```
 
@@ -647,20 +658,21 @@ ggplot(models_combined,
 
 Jonas code for rf classifier
 
-```{r, eval=F}
-# random forest
-library(randomForest)
-library(caret)
-
+```{r}
 # prepare data
-BR16_rf = dplyr::select(umap_count_BR16, -c("U1", "U2", "collection_date", "cell_type", "origin", "mouse_model", "ctc_n", "n_cells", "sample_title"))
+# sce_BR16 = readRDS(file = file.path("./../data/sce/sce_br16.rds"))
 
-# make col to rownames
-BR16_rf = tibble::column_to_rownames(BR16_rf, var = "sample_id")
+# extract counts
+BR16_rf = data.frame(t(use_sce_BR16@assays@data@listData[["logcpm"]]))
+
+# add timepoint information
+BR16_rf$timepoint = use_sce_BR16$timepoint
+
 # convert timepoint to factor
 BR16_rf$timepoint = as.factor(BR16_rf$timepoint)
 
 # select randomly 70% of rows
+set.seed(1)
 BR16_train = BR16_rf[sample(nrow(BR16_rf), round(0.7*138)), ]
 subset = rownames(BR16_rf) %in% rownames(BR16_train)
 BR16_test = BR16_rf[subset == FALSE,]
@@ -672,7 +684,9 @@ table(BR16_train$timepoint)
 # train 
 time_point = BR16_train$timepoint
 timepoint_model = randomForest(x = dplyr::select(BR16_train, -"timepoint"), y = time_point)
+
 # predict
+set.seed(1)
 predictions <- predict(timepoint_model, BR16_test)
 
 # results
@@ -686,40 +700,56 @@ accuracy
 i_scores <- caret::varImp(timepoint_model, conditional=TRUE)
 i_scores_sorted = i_scores[order(-i_scores$Overall), , drop = FALSE]
 
-# GO terms
-library("org.Hs.eg.db")
-
-ER_GO_day <- enrichGO(
-  gene = i_scores_subset$ensembl_gene_id,
-  keyType = "ENSEMBL",
-  OrgDb = "org.Hs.eg.db",
-  pvalueCutoff = 1, ont = "ALL"
-) %>%
-  as.data.frame()
-
-# plot GO
-ggplot(ER_GO_day %>% arrange(qvalue) %>% slice_head(n=15),
-       aes(x = -log10(qvalue), y = reorder(Description, -log10(qvalue)), size = Count, colour = -log10(qvalue))) +
-  geom_point() +
-  #facet_wrap(~ONTOLOGY, scales = "free", ncol  =1) +
-  labs(y = "")
+# prepare df for downstream plotting 
+rf_importance <- i_scores_sorted %>% 
+  rownames_to_column("GENEID") %>% 
+  setNames(c("GENEID", "Overall_importance"))
 ```
 
+If you do not set a seed this results will vary a lot. The current seed does not reflect the results we presented in the meeting!
 
+## Results evaluation
 
-```{r}
+This are the results generated by Jonas used for the plots of the presentation. Just play around with your own ones (or ask me/Jonas if you want the ones of Jonas) :)
+
+```{r, eval =F}
 rf_importance <- read_csv("C:/Users/burtsche/Documents/PreDoc_course/predoc_course/Huber_practical/output/i_scores.csv") %>% 
   setNames(c("GENEID", "Overall_importance"))
 ```
 
-```{r}
-deseq_rf <- inner_join(rf_importance, resdds_classic)
+ORA enrichment
 
-ggplot(deseq_rf,
-       aes(x = Overall_importance, y = log2FoldChange)) +
-  geom_point()
+```{r}
+i_scores_subset <- rf_importance %>% 
+  filter(Overall_importance > 0.05)
+
+ER_GO <- enrichGO(
+  gene = i_scores_subset$GENEID,
+  keyType = "ENSEMBL",
+  OrgDb = "org.Hs.eg.db",
+  pvalueCutoff = 1, 
+  ont = "ALL"
+) %>%
+  as.data.frame()
+
+# plot GO
+ggplot(
+  ER_GO %>%
+    arrange(qvalue) %>%
+    slice_head(n = 15),
+  aes(
+    x = -log10(qvalue),
+    y = reorder(Description, -log10(qvalue)),
+    size = Count,
+    colour = -log10(qvalue)
+  )
+) +
+  geom_point() +
+  # facet_wrap(~ONTOLOGY, scales = "free", ncol  =1) +
+  labs(y = "")
 ```
 
+Hit comparison
 
 ```{r}
 hits_classic <- resdds_classic %>% 
@@ -774,6 +804,7 @@ ggplot() +
 # attention: it is a human xenograft!! so I should use the human database
 
 dorothea_df <- dorothea_hs %>%
+  # only high confidence levels
   dplyr::filter(confidence %in% c("A", "B", "C")) %>%
   dplyr::select(target, tf, mor) %>%
   as.data.frame() %>%
@@ -808,6 +839,9 @@ input_night <- dge_BR16_old[["results"]] %>%
 ```
 
 ## run decupleR
+
+https://github.com/saezlab/decoupleR
+Tool which collects a series of methods to get TF activities. 
 
 ```{r}
 TF_activities_day <- as.data.frame(
@@ -883,7 +917,8 @@ dge_BR16_old[["results"]] %>%
   filter(MYC_targets == "MYC_targets") %>%
   ggplot(aes(x = logFC, y = -log10(FDR), label = label, colour = MYC_targets)) +
   geom_point() +
-  geom_text_repel()
+  geom_text_repel()+
+  labs(title = "MYC target expression")
 ```
 
 ### example 2: TEAD1
@@ -907,10 +942,11 @@ dge_BR16_old[["results"]] %>%
 
 ### ORA
 
+Over-representation analysis
 Old. Very few genes!
 
-```{r, eval = FALSE}
 
+```{r, eval = FALSE}
 ip_day <- TF_activities_day %>%
   filter(p_value < 0.05)
 
@@ -945,6 +981,7 @@ ER_GO <- enrichGO(
 
 ### GSEA
 
+Gene set enrichment analysis
 Old. just try to see if there is something, but not really
 
 ```{r, eval = F}
